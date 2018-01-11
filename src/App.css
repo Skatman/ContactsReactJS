@@ -1,0 +1,34 @@
+.contact-row {
+  display: table-row;
+}
+
+.contact-cell {
+  display: table-cell;
+  vertical-align: top;
+  padding: 10px;
+}
+
+.contact-cell:first-of-type {
+  text-align: center;
+  font-size: 0;
+}
+
+.contact-cell .contact-image {
+  background: white;
+}
+
+.contact-cell img {
+  height: 100px;
+}
+
+.contact-row:nth-child(odd) {
+  background: #f3f3f3;
+}
+
+.message-success {
+  color: green;
+}
+
+.message-fail {
+  color: red;
+}
