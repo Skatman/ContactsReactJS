@@ -12,6 +12,8 @@ class App extends Component {
     }
 
     this.addContact = this.addContact.bind(this);
+    this.deleteContact = this.deleteContact.bind(this);
+    this.editContact = this.editContact.bind(this);
   }
 
   componentDidMount() {
@@ -61,11 +63,39 @@ class App extends Component {
     this.setState({ contacts });
   }
 
+  deleteContact(id) {
+    for (let i = 0; i < this.state.contacts.length; i++) {
+      if (this.state.contacts[i].id === id) {
+        const contacts = this.state.contacts.slice();
+        contacts.splice(i,1);
+        this.setState({ contacts });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  editContact(contact) {
+    alert('edit is clicked!');
+    for (let i = 0; i < this.state.contacts.length; i++) {
+      if (this.state.contacts[i].id === contact.id) {
+        const contacts = this.state.contacts.slice();
+        Object.getOwnPropertyNames(contacts[i]).forEach((property) => {
+          contacts[i][property] = contact[property];
+        });
+        this.setState({ contacts });
+        return true;
+      }
+    }
+  }
+
   render() {
     return (
       <div className="App">
         <AddContact onSubmit={this.addContact}/>
-        <ContactsList contacts={this.state.contacts} />
+        <ContactsList contacts={this.state.contacts}
+          onDelete={this.deleteContact}
+          onEdit={this.editContact}/>
       </div>
     );
   }
@@ -75,36 +105,65 @@ class ContactsList extends Component {
   render() {
     return (
       this.props.contacts.map((contact) => {
-        return <Contact contact={contact} key={contact.id}/>
+        return <Contact contact={contact} key={contact.id}
+          onDelete={this.props.onDelete}
+          onEdit={this.props.onEdit}/>
       })
     )
   }
 }
 
 class Contact extends Component {
+  constructor(props) {
+      super(props);
+
+      this.state = {
+        editMode: false
+      }
+
+      this.editModeSwitch = this.editModeSwitch.bind(this);
+  }
+
+  editModeSwitch() {
+    const editMode = this.state.editMode ? false : true;
+    this.setState({ editMode });
+  }
+
   render() {
     const { contact } = this.props;
-    return (
-      <div className="contact-row">
-        <div className="contact-cell">
-          <div className="contact-image">
-            <img src={contact.picture} />
+    if (!this.state.editMode) {
+      return (
+        <div className="contact-row">
+          <div className="contact-cell">
+            <div className="contact-image">
+              <img src={contact.picture} />
+            </div>
+          </div>
+          <div className="contact-cell">
+            {contact.name}
+          </div>
+          <div className="contact-cell">
+            {contact.phone}
+          </div>
+          <div className="contact-cell">
+            {contact.email}
+          </div>
+          <div className="contact-cell">
+            {contact.address}
+          </div>
+          <div className="contact-cell">
+            <button onClick={this.editModeSwitch}>Edit</button>
+            <button onClick={this.props.onDelete.bind(this,contact.id)}>Delete</button>
           </div>
         </div>
-        <div className="contact-cell">
-          {contact.name}
-        </div>
-        <div className="contact-cell">
-          {contact.phone}
-        </div>
-        <div className="contact-cell">
-          {contact.email}
-        </div>
-        <div className="contact-cell">
-          {contact.address}
-        </div>
-      </div>
-    )
+      )
+    } else {
+      return (
+          <AddContact contact={contact}
+            onCancel={this.editModeSwitch}
+            onSubmit={this.props.onEdit}/>
+      )
+    }
   }
 }
 
@@ -112,11 +171,24 @@ class AddContact extends Component {
   constructor(props) {
     super(props);
 
+    let contact = {};
+    if (this.props.contact !== undefined) {
+      Object.getOwnPropertyNames(this.props.contact).forEach((property) => {
+        contact[property] = this.props.contact[property];
+      });
+    } else {
+      contact = this.contactStateDefaults();
+    }
+
     this.state = {
-      contact: this.contactStateDefaults(),
+      contact: contact,
       message: {
         type: undefined,
         text: ''
+      },
+      fieldsErrors: {
+        name: '',
+        email: ''
       }
     }
 
@@ -135,11 +207,15 @@ class AddContact extends Component {
   onSubmit(event) {
     event.preventDefault();
 
+    alert('add contact on submit is called!');
     if (this.validateForm() === true) {
+      alert('validation passed');
       let contact = {};
       Object.getOwnPropertyNames(this.state.contact).forEach((property) => {
         contact[property] = this.state.contact[property];
       });
+      console.log(this.props);
+      console.log(contact);
       this.props.onSubmit(contact);
       this.setState({
         contact: this.contactStateDefaults()
@@ -156,27 +232,26 @@ class AddContact extends Component {
     const { contact } = this.state;
     let messages = [];
     let message = {};
+    let fieldsErrors = {
+      name: '',
+      email: ''
+    };
+
     if (contact.name.length === 0) {
       messages.push('Name should not be empty');
+      fieldsErrors.name = 'Name should not be empty';
     }
     if (contact.email.length > 0 && !this.validateEmail(contact.email)) {
       messages.push('Email should be valid');
+      fieldsErrors.email = 'Not valid email';
     }
-    if (messages.length > 0) {
-      const text = messages.reduce((outPut, message) => {
-        return outPut = `${outPut}${message}\n`;
-      }, '');
-      message = {
-        type: 'fail',
-        text: text
-      }
-    } else {
+    if (messages.length === 0) {
       message = {
         type: 'success',
-        text: 'Contact has been added successfully'
+        text: 'Contact has been saved'
       }
     }
-    this.setState({ message });
+    this.setState({ message , fieldsErrors });
     if (message.type === 'success') {
       return true;
     } else {
@@ -200,17 +275,41 @@ class AddContact extends Component {
     return (
       <div className="add-contact">
         <form onSubmit={this.onSubmit}>
-          <input type="text" placeholder="Name"
-            value={contact.name} onChange={this.inputChange.bind(this,"name")}/>
-          <input type="text" placeholder="Phone"
+          <Input type="text" placeholder="Name"
+            value={contact.name} onChange={this.inputChange.bind(this,"name")}
+            error={this.state.fieldsErrors.name}/>
+          <Input type="text" placeholder="Phone"
             value={contact.phone} onChange={this.inputChange.bind(this,"phone")}/>
-          <input type="text" placeholder="Email"
-            value={contact.email} onChange={this.inputChange.bind(this,"email")}/>
-          <input type="text" placeholder="Address"
+          <Input type="text" placeholder="Email"
+            value={contact.email} onChange={this.inputChange.bind(this,"email")}
+            error={this.state.fieldsErrors.email} />
+          <Input type="text" placeholder="Address"
             value={contact.address} onChange={this.inputChange.bind(this,"address")}/>
-          <input type="submit" />
           <FormMessage message={this.state.message}/>
+          <div className="input padding-top-0">
+            <input type="submit" />
+          </div>
+          <div className="input padding-top-0">
+            <button onClick={this.props.onCancel}>Cancel</button>
+          </div>
         </form>
+      </div>
+    )
+  }
+}
+
+class Input extends Component {
+  render() {
+    const className = this.props.error && this.props.error.length > 0 ?
+      "error" : "";
+    return (
+      <div className="input">
+        <input type={this.props.type}
+          placeholder={this.props.placeholder}
+          value={this.props.value}
+          onChange={this.props.onChange}
+          className={className} />
+        <p>{this.props.error}</p>
       </div>
     )
   }
