@@ -2,18 +2,25 @@ import React, { Component } from 'react';
 import logo from './logo.svg';
 import './App.css';
 import axios from 'axios';
+import validators from './validators.js';
+import Form from './form.js';
 
 class App extends Component {
   constructor(props) {
     super(props);
 
     this.state = {
-      contacts: []
+      contacts: [],
+      term: '',
+      sortBy: undefined
     }
 
     this.addContact = this.addContact.bind(this);
     this.deleteContact = this.deleteContact.bind(this);
     this.editContact = this.editContact.bind(this);
+    this.filterContacts = this.filterContacts.bind(this);
+    this.sortContacts = this.sortContacts.bind(this);
+    this.onTermChange = this.onTermChange.bind(this);
   }
 
   componentDidMount() {
@@ -24,7 +31,6 @@ class App extends Component {
     const self = this;
     axios.get('/contacts.json')
       .then(function (response) {
-        console.log(self.processRawContacts(response.data));
         self.setState({
           contacts: self.processRawContacts(response.data)
         })
@@ -45,22 +51,43 @@ class App extends Component {
         address: address,
         phone: phone,
         email: email,
-        picture: picture
+        picture: picture,
+        filtered: true
       }
     })
   }
 
   addContact(contact) {
-    let { contacts } = this.state;
-    let id = 0;
+    const contacts = this.state.contacts.slice();
+    let maxId = 0;
     contacts.forEach((contact) => {
-      if (contact.id > id) {
-        id = contact.id;
+      if (contact.id > maxId) {
+        maxId = contact.id;
       }
     })
-    contact.id = ++id;
-    contacts.push(contact);
+    contact.id = ++maxId;
+    contact.picture = 'http://placebear.com/187/187';
+    contact.filtered = JSON.stringify(contact).toLowerCase().includes(this.state.term.toLowerCase()) ?
+      true : false;
+
+    const { sortBy } = this.state;
+    if (sortBy) {
+      this.sortedInsert(sortBy, contact, contacts);
+    } else {
+      contacts.push(contact);
+    }
+
     this.setState({ contacts });
+  }
+
+  sortedInsert(sortBy, contact, contacts) {
+    for (let i = 0; i < contacts.length; i++) {
+      if (contacts[i][sortBy] >= contact[sortBy]){
+        contacts.splice(i,0,contact);
+        return;
+      }
+    }
+    contacts.splice(0,0,contact);
   }
 
   deleteContact(id) {
@@ -76,26 +103,73 @@ class App extends Component {
   }
 
   editContact(contact) {
-    alert('edit is clicked!');
     for (let i = 0; i < this.state.contacts.length; i++) {
       if (this.state.contacts[i].id === contact.id) {
         const contacts = this.state.contacts.slice();
-        Object.getOwnPropertyNames(contacts[i]).forEach((property) => {
+        Object.getOwnPropertyNames(contact).forEach((property) => {
           contacts[i][property] = contact[property];
         });
+        contacts[i].filtered = JSON.stringify(contact).toLowerCase().includes(this.state.term.toLowerCase()) ?
+          true : false;
+        const { sortBy } = this.state;
+        if ( sortBy ) {
+          let contact = contacts.splice(i,1)[0];
+          console.log(contact);
+          this.sortedInsert(sortBy, contact, contacts);
+        }
         this.setState({ contacts });
         return true;
       }
     }
   }
 
+  onTermChange(event) {
+    this.setState({
+      term: event.target.value
+    })
+    this.filterContacts(event.target.value);
+  }
+
+  filterContacts(term) {
+    console.log('term',term);
+    const contacts = this.state.contacts.slice();
+    contacts.forEach((contact) => {
+      contact.filtered =
+        JSON.stringify(contact).toLowerCase().includes(term.toLowerCase()) ?
+          true : false;
+    })
+    this.setState({ contacts });
+  }
+
+  sortContacts(propName) {
+    const contacts = this.state.contacts.slice();
+    contacts.sort((a, b) => {
+      if (a[propName] > b[propName]){
+        return 1;
+      }
+
+      if (a[propName] < b[propName]){
+        return -1;
+      }
+
+      return 0;
+    })
+    this.setState({ contacts });
+    this.setState({
+      sortBy: propName
+    });
+  }
+
   render() {
     return (
       <div className="App">
         <AddContact onSubmit={this.addContact}/>
+        <SearchContacts onChange={this.onTermChange}
+          term={this.state.term}/>
         <ContactsList contacts={this.state.contacts}
           onDelete={this.deleteContact}
-          onEdit={this.editContact}/>
+          onEdit={this.editContact}
+          sort={this.sortContacts}/>
       </div>
     );
   }
@@ -103,12 +177,51 @@ class App extends Component {
 
 class ContactsList extends Component {
   render() {
-    return (
-      this.props.contacts.map((contact) => {
+
+    const contacts = this.props.contacts.map((contact) => {
+      if (contact.filtered) {
         return <Contact contact={contact} key={contact.id}
           onDelete={this.props.onDelete}
           onEdit={this.props.onEdit}/>
-      })
+      }
+    });
+
+    return (
+      <div>
+        <ContactsListHeader sort={this.props.sort}/>
+        {contacts}
+      </div>
+    )
+  }
+}
+
+class ContactsListHeader extends Component {
+  render () {
+    return (
+      <div className="contact-row contact-header">
+        <div className="contact-cell">
+          <div className="contact-image">
+          </div>
+        </div>
+        <div className="contact-cell"
+          onClick={this.props.sort.bind(this,'name')}>
+          Name
+        </div>
+        <div className="contact-cell"
+          onClick={this.props.sort.bind(this,'phone')}>
+          Phone
+        </div>
+        <div className="contact-cell"
+          onClick={this.props.sort.bind(this,'email')}>
+          Email
+        </div>
+        <div className="contact-cell"
+          onClick={this.props.sort.bind(this,'address')}>
+          Address
+        </div>
+        <div className="contact-cell">
+        </div>
+      </div>
     )
   }
 }
@@ -122,11 +235,18 @@ class Contact extends Component {
       }
 
       this.editModeSwitch = this.editModeSwitch.bind(this);
+      this.onEdit = this.onEdit.bind(this);
   }
 
   editModeSwitch() {
     const editMode = this.state.editMode ? false : true;
     this.setState({ editMode });
+  }
+
+  onEdit(contact) {
+    if (this.props.onEdit(contact)) {
+      this.editModeSwitch()
+    }
   }
 
   render() {
@@ -159,171 +279,119 @@ class Contact extends Component {
       )
     } else {
       return (
-          <AddContact contact={contact}
+          <EditContact contact={contact}
             onCancel={this.editModeSwitch}
-            onSubmit={this.props.onEdit}/>
+            onSubmit={this.onEdit}/>
       )
     }
   }
 }
 
 class AddContact extends Component {
-  constructor(props) {
-    super(props);
 
-    let contact = {};
-    if (this.props.contact !== undefined) {
-      Object.getOwnPropertyNames(this.props.contact).forEach((property) => {
-        contact[property] = this.props.contact[property];
-      });
-    } else {
-      contact = this.contactStateDefaults();
-    }
-
-    this.state = {
-      contact: contact,
-      message: {
-        type: undefined,
-        text: ''
+  render() {
+    const fields = [
+      {
+        name: 'name',
+        type: 'text',
+        validators: [
+          {
+            func: validators.notEmpty,
+            error: 'Name is required'
+          }
+        ],
+        val: ''
       },
-      fieldsErrors: {
-        name: '',
-        email: ''
+      {
+        name: 'email',
+        type: 'text',
+        validators: [
+          {
+            func: validators.email,
+            error: 'Not valid email'
+          }
+        ],
+        val: ''
+      },
+      {
+        name: 'phone',
+        type: 'text',
+        validators: undefined,
+        val: ''
+      },
+      {
+        name: 'address',
+        type: 'text',
+        validators: undefined,
+        val: ''
       }
-    }
-
-    this.inputChange = this.inputChange.bind(this);
-    this.onSubmit = this.onSubmit.bind(this);
-  }
-
-  inputChange(propName, event) {
-    const { contact } = this.state;
-    if (contact.hasOwnProperty(propName)) {
-      contact[propName] = event.target.value;
-      this.setState({contact});
-    }
-  }
-
-  onSubmit(event) {
-    event.preventDefault();
-
-    alert('add contact on submit is called!');
-    if (this.validateForm() === true) {
-      alert('validation passed');
-      let contact = {};
-      Object.getOwnPropertyNames(this.state.contact).forEach((property) => {
-        contact[property] = this.state.contact[property];
-      });
-      console.log(this.props);
-      console.log(contact);
-      this.props.onSubmit(contact);
-      this.setState({
-        contact: this.contactStateDefaults()
-      });
-    }
-  }
-
-  validateEmail(email) {
-    var re = /^(?:[a-z0-9!#$%&amp;'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&amp;'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])$/;
-    return re.test(email);
-  }
-
-  validateForm() {
-    const { contact } = this.state;
-    let messages = [];
-    let message = {};
-    let fieldsErrors = {
-      name: '',
-      email: ''
-    };
-
-    if (contact.name.length === 0) {
-      messages.push('Name should not be empty');
-      fieldsErrors.name = 'Name should not be empty';
-    }
-    if (contact.email.length > 0 && !this.validateEmail(contact.email)) {
-      messages.push('Email should be valid');
-      fieldsErrors.email = 'Not valid email';
-    }
-    if (messages.length === 0) {
-      message = {
-        type: 'success',
-        text: 'Contact has been saved'
-      }
-    }
-    this.setState({ message , fieldsErrors });
-    if (message.type === 'success') {
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-  contactStateDefaults() {
-    return {
-      id: undefined,
-      name: '',
-      phone: '',
-      email: '',
-      address: '',
-      picture: 'http://placebear.com/187/187'
-    }
-  }
-
-  render() {
-    let { contact } = this.state;
-    return (
-      <div className="add-contact">
-        <form onSubmit={this.onSubmit}>
-          <Input type="text" placeholder="Name"
-            value={contact.name} onChange={this.inputChange.bind(this,"name")}
-            error={this.state.fieldsErrors.name}/>
-          <Input type="text" placeholder="Phone"
-            value={contact.phone} onChange={this.inputChange.bind(this,"phone")}/>
-          <Input type="text" placeholder="Email"
-            value={contact.email} onChange={this.inputChange.bind(this,"email")}
-            error={this.state.fieldsErrors.email} />
-          <Input type="text" placeholder="Address"
-            value={contact.address} onChange={this.inputChange.bind(this,"address")}/>
-          <FormMessage message={this.state.message}/>
-          <div className="input padding-top-0">
-            <input type="submit" />
-          </div>
-          <div className="input padding-top-0">
-            <button onClick={this.props.onCancel}>Cancel</button>
-          </div>
-        </form>
-      </div>
-    )
-  }
-}
-
-class Input extends Component {
-  render() {
-    const className = this.props.error && this.props.error.length > 0 ?
-      "error" : "";
-    return (
-      <div className="input">
-        <input type={this.props.type}
-          placeholder={this.props.placeholder}
-          value={this.props.value}
-          onChange={this.props.onChange}
-          className={className} />
-        <p>{this.props.error}</p>
-      </div>
-    )
-  }
-}
-
-class FormMessage extends Component {
-  render() {
-    const messageClass = this.props.message.type === "success" ?
-      "message-success" : "message-fail";
+    ]
     return(
-      <div className="form-message">
-        { this.props.message.text &&
-          <p className={messageClass}>{this.props.message.text}</p>
-        }
+      <Form fields={fields} onSubmit={this.props.onSubmit}/>
+    )
+  }
+}
+
+class EditContact extends Component {
+
+  render() {
+    const fields = [
+      {
+        name: 'id',
+        type: 'text',
+        validators: undefined,
+        val: this.props.contact.id,
+        disabled: true
+      },
+      {
+        name: 'name',
+        type: 'text',
+        validators: [
+          {
+            func: validators.notEmpty,
+            error: 'Name is required'
+          }
+        ],
+        val: this.props.contact.name
+      },
+      {
+        name: 'email',
+        type: 'text',
+        validators: [
+          {
+            func: validators.email,
+            error: 'Not valid email'
+          }
+        ],
+        val: this.props.contact.email
+      },
+      {
+        name: 'phone',
+        type: 'text',
+        validators: undefined,
+        val: this.props.contact.phone
+      },
+      {
+        name: 'address',
+        type: 'text',
+        validators: undefined,
+        val: this.props.contact.address
+      }
+    ]
+    return(
+      <Form fields={fields} onSubmit={this.props.onSubmit}/>
+    )
+  }
+}
+
+class SearchContacts extends Component {
+  render() {
+    return (
+      <div className="contacts-search">
+        <input value={this.props.term}
+          type="text"
+          onChange={this.props.onChange}
+          placeholder="Contacts search"/>
       </div>
     )
   }
